@@ -1,24 +1,8 @@
-/*******************************************************************************
- * Copyright (c) 2012, 2020 IBM Corp.
- *
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v2.0
- * and Eclipse Distribution License v1.0 which accompany this distribution. 
- *
- * The Eclipse Public License is available at 
- *   https://www.eclipse.org/legal/epl-2.0/
- * and the Eclipse Distribution License is available at 
- *   http://www.eclipse.org/org/documents/edl-v10.php.
- *
- * Contributors:
- *    Ian Craggs - initial contribution
- *******************************************************************************/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "MQTTAsync.h"
-
+#include <time.h>
 #if !defined(_WIN32)
 #include <unistd.h>
 #else
@@ -30,15 +14,25 @@
 #endif
 
 #define ADDRESS     "tcp://localhost:1883"
-#define CLIENTID    "client1"
-#define TOPIC       "MQTT Examples"
-#define PAYLOAD     "Hello World!kkkkkkkkkkkkkkkkkkkkkkk"
+//#define TOPIC       "MQTT Examples"
 #define QOS         1
 #define TIMEOUT     10000L
+#define TAM 50
 
 int disc_finished = 0;
 int subscribed = 0;
 int finished = 0;
+
+char topic_control[50]= "control_"; 
+char client_id[12];
+char msg_status[TAM];
+char msg_conexao[TAM];
+
+void set_online(MQTTAsync client);
+MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
+MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
+
+
 
 void connlost(void *context, char *cause)
 {
@@ -63,9 +57,22 @@ void connlost(void *context, char *cause)
 
 int msgarrvd(void *context, char *topicName, int topicLen, MQTTAsync_message *message)
 {
+	char * user;
+	int i=0,j=0;
+
+
     printf("Message arrived\n");
     printf("     topic: %s\n", topicName);
     printf("   message: %.*s\n", message->payloadlen, (char*)message->payload);
+
+	if(strstr(message->payload,"está online")){
+		printf("Contato online encontrado!\n");
+	}
+
+	if(strstr(message->payload,"deseja enviar mensagem")){
+		printf("Usuário deseja conectar encontrado!!\n");
+	}
+
     MQTTAsync_freeMessage(&message);
     MQTTAsync_free(topicName);
     return 1;
@@ -107,22 +114,44 @@ void onConnect(void* context, MQTTAsync_successData* response)
 {
 	MQTTAsync client = (MQTTAsync)context;
 	MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
+//	MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
+
 	int rc;
 
 	printf("Successful connection\n");
+	
+	/*printf("Subscribing to topic %s\nfor client %s using QoS%d\n\n"
+           "Press Q<Enter> to quit\n\n", TOPIC, client_id, QOS);*/
 
-	printf("Subscribing to topic %s\nfor client %s using QoS%d\n\n"
-           "Press Q<Enter> to quit\n\n", TOPIC, CLIENTID, QOS);
+
 	opts.onSuccess = onSubscribe;
 	opts.onFailure = onSubscribeFailure;
 	opts.context = client;
-	if ((rc = MQTTAsync_subscribe(client, TOPIC, QOS, &opts)) != MQTTASYNC_SUCCESS)
+	/*if ((rc = MQTTAsync_subscribe(client, TOPIC, QOS, &opts)) != MQTTASYNC_SUCCESS)
 	{
 		printf("Failed to start subscribe, return code %d\n", rc);
 		finished = 1;
-	}
+	}*/
+
 	MQTTAsync_subscribe(client, "client1_control", QOS, &opts);
 	MQTTAsync_subscribe(client, "online", QOS, &opts);
+
+	set_online(client);
+
+
+}
+
+void set_online(MQTTAsync client){
+
+	strcpy(msg_status,client_id);//insere o id (obtido pelo timestamp) na nova string
+	strcat(msg_status," está online\n"); // concatena as strings
+	//printf("%s",msg_status); // teste da mensagem id do usuario + está online
+
+	pubmsg.payload = msg_status; //seta a mensagem a ser enviada para a string mg_status
+	pubmsg.payloadlen = strlen(msg_status);	//seta o tamanho da mensagem
+
+	MQTTAsync_sendMessage(client, "online", &pubmsg, &opts); //envia a mensagem
+
 }
 
 
@@ -134,7 +163,7 @@ int main(int argc, char* argv[])
 	int rc;
 	int ch;
 
-	if ((rc = MQTTAsync_create(&client, ADDRESS, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL))
+	if ((rc = MQTTAsync_create(&client, ADDRESS, client_id, MQTTCLIENT_PERSISTENCE_NONE, NULL))
 			!= MQTTASYNC_SUCCESS)
 	{
 		printf("Failed to create client, return code %d\n", rc);
@@ -154,9 +183,13 @@ int main(int argc, char* argv[])
 	conn_opts.onSuccess = onConnect;
 	conn_opts.onFailure = onConnectFailure;
 	conn_opts.context = client;
-
+	
 	MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
 	MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
+	opts.context = client;
+	pubmsg.qos = QOS;
+	pubmsg.retained = 0;
+
 
 	if ((rc = MQTTAsync_connect(client, &conn_opts)) != MQTTASYNC_SUCCESS)
 	{
@@ -164,7 +197,12 @@ int main(int argc, char* argv[])
 		rc = EXIT_FAILURE;
 		goto destroy_exit;
 	}
+
+	int timestamp = (int)time(NULL);
+	sprintf(client_id, "%d", timestamp); // converter int para string
+	strcat(topic_control,client_id);
 	
+	pubmsg.payload ="teste de envio de mensagem";
 	MQTTAsync_sendMessage(client, "client1_control", &pubmsg, &opts);
 	printf("Message sended!!");
 
