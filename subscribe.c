@@ -17,13 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <time.h>
-#include <ctype.h>
 #include "MQTTAsync.h"
-#include<arpa/inet.h>
-#include<sys/socket.h>
-#define _GNU_SOURCE
 
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -36,22 +30,15 @@
 #endif
 
 #define ADDRESS     "tcp://localhost:1883"
+#define CLIENTID    "client1"
 #define TOPIC       "MQTT Examples"
+#define PAYLOAD     "Hello World!kkkkkkkkkkkkkkkkkkkkkkk"
 #define QOS         1
 #define TIMEOUT     10000L
 
 int disc_finished = 0;
 int subscribed = 0;
 int finished = 0;
-
-char client_id [12] ;
-
-void armazenaAleatorios(char vetor[]){
-    int i;
-    for(i=0; i<5; i++)
-        vetor[i]='a' + (char)(rand()%26);
-}
-
 
 void connlost(void *context, char *cause)
 {
@@ -79,7 +66,6 @@ int msgarrvd(void *context, char *topicName, int topicLen, MQTTAsync_message *me
     printf("Message arrived\n");
     printf("     topic: %s\n", topicName);
     printf("   message: %.*s\n", message->payloadlen, (char*)message->payload);
-	printf("timestamp after message: %d \n",(int)time(NULL));
     MQTTAsync_freeMessage(&message);
     MQTTAsync_free(topicName);
     return 1;
@@ -126,7 +112,7 @@ void onConnect(void* context, MQTTAsync_successData* response)
 	printf("Successful connection\n");
 
 	printf("Subscribing to topic %s\nfor client %s using QoS%d\n\n"
-           "Press Q<Enter> to quit\n\n", TOPIC, client_id, QOS);
+           "Press Q<Enter> to quit\n\n", TOPIC, CLIENTID, QOS);
 	opts.onSuccess = onSubscribe;
 	opts.onFailure = onSubscribeFailure;
 	opts.context = client;
@@ -135,6 +121,8 @@ void onConnect(void* context, MQTTAsync_successData* response)
 		printf("Failed to start subscribe, return code %d\n", rc);
 		finished = 1;
 	}
+	MQTTAsync_subscribe(client, "client1_control", QOS, &opts);
+	MQTTAsync_subscribe(client, "online", QOS, &opts);
 }
 
 
@@ -145,13 +133,8 @@ int main(int argc, char* argv[])
 	MQTTAsync_disconnectOptions disc_opts = MQTTAsync_disconnectOptions_initializer;
 	int rc;
 	int ch;
-	
-	printf("Initial timestamp: %d \n",(int)time(NULL));
-	int timestamp = (int)time(NULL);
-	sprintf(client_id, "%d", timestamp); // converter int para string
 
-
-	if ((rc = MQTTAsync_create(&client, ADDRESS,client_id, MQTTCLIENT_PERSISTENCE_NONE, NULL))
+	if ((rc = MQTTAsync_create(&client, ADDRESS, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL))
 			!= MQTTASYNC_SUCCESS)
 	{
 		printf("Failed to create client, return code %d\n", rc);
@@ -171,12 +154,19 @@ int main(int argc, char* argv[])
 	conn_opts.onSuccess = onConnect;
 	conn_opts.onFailure = onConnectFailure;
 	conn_opts.context = client;
+
+	MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
+	MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
+
 	if ((rc = MQTTAsync_connect(client, &conn_opts)) != MQTTASYNC_SUCCESS)
 	{
 		printf("Failed to start connect, return code %d\n", rc);
 		rc = EXIT_FAILURE;
 		goto destroy_exit;
 	}
+	
+	MQTTAsync_sendMessage(client, "client1_control", &pubmsg, &opts);
+	printf("Message sended!!");
 
 	while (!subscribed && !finished)
 		#if defined(_WIN32)
@@ -201,7 +191,7 @@ int main(int argc, char* argv[])
 		rc = EXIT_FAILURE;
 		goto destroy_exit;
 	}
- 	while (!disc_finished)
+ while (!disc_finished)
  	{
 		#if defined(_WIN32)
 			Sleep(100);
@@ -213,6 +203,5 @@ int main(int argc, char* argv[])
 destroy_exit:
 	MQTTAsync_destroy(&client);
 exit:
-	printf("Timestamp end : %d",(int)time(NULL));
  	return rc;
 }
