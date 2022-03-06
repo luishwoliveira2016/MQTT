@@ -14,7 +14,6 @@
 #endif
 
 #define ADDRESS     "tcp://localhost:1883"
-//#define TOPIC       "MQTT Examples"
 #define QOS         1
 #define TIMEOUT     10000L
 #define TAM 50
@@ -29,9 +28,39 @@ char msg_status[TAM];
 char msg_conexao[TAM];
 
 void set_online(MQTTAsync client);
+
+
 MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
 MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
 
+void menu(); //menu de opções
+
+void criar_grupo(void * client){ // Criar grupo (não completa)
+	
+	char * group_name;
+	printf("Insira o nome do grupo");
+	fgets(group_name,10,stdin);
+	MQTTAsync_sendMessage(client, "online", &pubmsg, &opts);
+}
+
+void * send_message(void *client){ //enviar mensagem(falta adicionar o tópico qual referente será enviada)
+
+	char * message;
+	printf("Mensagem:\n");
+	scanf("%s",message);
+
+	pubmsg.payload = message;
+	pubmsg.payloadlen = strlen(message);
+
+	MQTTAsync_sendMessage(client, "online", &pubmsg, &opts); //envia a mensagem
+}
+
+char aceitar_contato(char * msg){ //função para aceitar o recebimento de msg
+	char res;
+	printf("Deseja aceitar mensagens deste contato?");
+	scanf("%c",&res);
+	return res;
+}
 
 
 void connlost(void *context, char *cause)
@@ -58,19 +87,22 @@ void connlost(void *context, char *cause)
 int msgarrvd(void *context, char *topicName, int topicLen, MQTTAsync_message *message)
 {
 	char * user;
+	char res;
 	int i=0,j=0;
 
 
     printf("Message arrived\n");
     printf("     topic: %s\n", topicName);
-    printf("   message: %.*s\n", message->payloadlen, (char*)message->payload);
+    printf("   	message: %.*s\n", message->payloadlen, (char*)message->payload);
 
-	if(strstr(message->payload,"está online")){
+	if(strstr(message->payload,"está online")){ //verifica se é mensagem de status
 		printf("Contato online encontrado!\n");
 	}
 
-	if(strstr(message->payload,"deseja enviar mensagem")){
+	if(strstr(message->payload,"deseja enviar mensagem")){ //recebeu solicitação de bate papo
 		printf("Usuário deseja conectar encontrado!!\n");
+		res = aceitar_contato(message->payload);
+		if(res=='s') printf("conectado!");
 	}
 
     MQTTAsync_freeMessage(&message);
@@ -113,7 +145,7 @@ void onConnectFailure(void* context, MQTTAsync_failureData* response)
 void onConnect(void* context, MQTTAsync_successData* response)
 {
 	MQTTAsync client = (MQTTAsync)context;
-	MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
+	//MQTTAsync_responseOptions opts = MQTTAsync_responseOptions_initializer;
 //	MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
 
 	int rc;
@@ -149,6 +181,10 @@ void set_online(MQTTAsync client){
 
 	pubmsg.payload = msg_status; //seta a mensagem a ser enviada para a string mg_status
 	pubmsg.payloadlen = strlen(msg_status);	//seta o tamanho da mensagem
+	MQTTAsync_sendMessage(client, "online", &pubmsg, &opts); //envia a mensagem
+
+	pubmsg.payload = "123 deseja enviar mensagem"; //seta a mensagem a ser enviada para a string mg_status
+	pubmsg.payloadlen = strlen(pubmsg.payload);	//seta o tamanho da mensagem
 
 	MQTTAsync_sendMessage(client, "online", &pubmsg, &opts); //envia a mensagem
 
@@ -199,13 +235,13 @@ int main(int argc, char* argv[])
 	}
 
 	int timestamp = (int)time(NULL);
-	sprintf(client_id, "%d", timestamp); // converter int para string
-	strcat(topic_control,client_id);
+	sprintf(client_id, "%d", timestamp); //converter int para string
+	strcat(topic_control,client_id); //gerando tópico de controle
 	
-	pubmsg.payload ="teste de envio de mensagem";
-	MQTTAsync_sendMessage(client, "client1_control", &pubmsg, &opts);
-	printf("Message sended!!");
-
+	printf("Olá usuário, seu id é %s\n",client_id);
+	//printf("you control topic is %s\n",topic_control);
+	
+	//send_message(client);
 	while (!subscribed && !finished)
 		#if defined(_WIN32)
 			Sleep(100);
